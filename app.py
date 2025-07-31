@@ -16,6 +16,7 @@ file1 = st.sidebar.file_uploader("Upload First Image (Background)", type=["jpg",
 file2 = st.sidebar.file_uploader("Upload Second Image (Object with background)", type=["jpg", "png", "jpeg"])
 
 if file1 and file2:
+    # Read images
     img1 = np.array(Image.open(file1).convert("RGB"))
     img2 = np.array(Image.open(file2).convert("RGB"))
 
@@ -38,6 +39,47 @@ if file1 and file2:
     v_min = st.sidebar.slider("Value Min", 0, 255, 0)
     v_max = st.sidebar.slider("Value Max", 0, 255, 255)
 
-    # Convert to HSV
+    # Convert to HSV and create mask
     hsv = cv2.cvtColor(img2_resized, cv2.COLOR_RGB2HSV)
-    lower_color = np._
+    lower_color = np.array([h_min, s_min, v_min], dtype=np.uint8)
+    upper_color = np.array([h_max, s_max, v_max], dtype=np.uint8)
+
+    mask = cv2.inRange(hsv, lower_color, upper_color)
+    mask_inv = cv2.bitwise_not(mask)
+
+    # Extract object without background
+    img2_fg = cv2.bitwise_and(img2_resized, img2_resized, mask=mask_inv)
+
+    # --- Live Mask Preview ---
+    st.subheader("🎭 Mask Preview")
+    st.image(mask_inv, caption="Mask (White = Object, Black = Removed Background)", use_column_width=True)
+
+    # Prepare ROI
+    rows, cols = img2_fg.shape[:2]
+    roi = img1[y_offset:y_offset+rows, x_offset:x_offset+cols]
+
+    # Remove background from ROI
+    img1_bg = cv2.bitwise_and(roi, roi, mask=mask_inv)
+
+    # Merge object onto background
+    dst = cv2.add(img1_bg, img2_fg)
+    img1[y_offset:y_offset+rows, x_offset:x_offset+cols] = dst
+
+    # --- Final Preview ---
+    st.subheader("🔍 Final Image Preview")
+    st.image(img1, caption="Merged Image", use_column_width=True)
+
+    # Download Button
+    result_img = Image.fromarray(img1)
+    buf = io.BytesIO()
+    result_img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+
+    st.download_button(
+        label="⬇️ Download Final Image",
+        data=byte_im,
+        file_name="merged_no_bg.png",
+        mime="image/png"
+    )
+else:
+    st.info("⬅️ Please upload both images from the sidebar to begin.")
